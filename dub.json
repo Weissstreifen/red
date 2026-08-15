@@ -1,0 +1,9 @@
+{
+	"description": "A minimal D application.",
+	"license": "proprietary",
+	"authors": [
+		"Weißstreifen"
+	],
+	"copyright": "Copyright © 2026, Weißstreifen",
+	"name": "red"
+}

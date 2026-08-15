@@ -1,0 +1,17 @@
+.dub
+docs.json
+__dummy.html
+docs/
+/red
+red.so
+red.dylib
+red.dll
+libred.a
+red.a
+red.lib
+red-test-*
+*.exe
+*.pdb
+*.o
+*.obj
+*.lst

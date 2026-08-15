@@ -1,0 +1,14 @@
+{
+	"description": "Counter example for the red TUI framework.",
+	"license": "MIT",
+	"authors": [
+		"Weißstreifen"
+	],
+	"copyright": "Copyright © 2026, Weißstreifen",
+	"name": "counter",
+	"dependencies": {
+		"red": {
+			"path": "../.."
+		}
+	}
+}
