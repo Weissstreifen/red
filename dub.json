@@ -1,6 +1,6 @@
 {
-	"description": "A minimal D application.",
-	"license": "proprietary",
+	"description": "A TEA based TUI framework.",
+	"license": "MIT",
 	"authors": [
 		"Weißstreifen"
 	],
