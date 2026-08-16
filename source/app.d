@@ -1,9 +1,7 @@
 module app;
-import std.datetime.stopwatch;
 
 import red;
-
-import std.stdio;
+import tui.renderer;
 
 class Increment : IMessage
 {
@@ -13,47 +11,20 @@ class Increment : IMessage
     }
 }
 
-class PrintCounterState : ICommand
-{
-    string type()
-    {
-        return "print";
-    }
-}
-
-struct Counter
-{
-    int value = 0;
-}
+alias draw = (int state, Renderer renderer) { renderer.box(10, 10, 20, 5); };
 
 IMessage delegate() receiveMessage = delegate IMessage() { return new Increment(); };
 
 void main()
 {
-    enum N = 1_000_000;
-
-    RedSystem!Counter app = new RedSystem!Counter(Counter(), receiveMessage);
-    app.registerMessage("increment", (Counter state, IMessage message) {
-        state.value += 1;
-
-        UpdateResult!Counter result = UpdateResult!Counter(
-            state,
-            []
-        );
-
-        if (state.value == N)
+    RedSystem!int app = new RedSystem!int(1, receiveMessage, draw);
+    app.registerMessage("increment", (int state, IMessage msg) {
+        bool end = false;
+        if (state == 10_000_000)
         {
-            result.exit = true;
+            end = true;
         }
-
-        return result;
+        return UpdateResult!int(state + 1, [], end);
     });
-
-    auto sw = StopWatch(AutoStart.yes);
     app.run();
-    auto elapsed = sw.peek();
-
-    writeln("Processed: ", N, " messages.");
-    writeln("Elapsed: ", elapsed);
-    writeln("ns/message: ", elapsed.total!"nsecs" / cast(double) N);
 }

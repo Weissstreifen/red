@@ -1,5 +1,9 @@
 module red;
 
+import tui.renderer;
+
+import arsd.terminal;
+
 interface IMessage
 {
     string type();
@@ -18,12 +22,12 @@ struct UpdateResult(S)
 }
 
 alias MessageHandler(S) = UpdateResult!(S) delegate(S state, IMessage message);
-
 alias MessageSender = void delegate(IMessage message);
 alias CommandHandler(S) = void delegate(const ref S state, ICommand command, MessageSender send);
 alias MessageType = string;
 alias CommandType = string;
 alias MessageReceiver = IMessage delegate();
+alias DrawFunction(S) = void delegate(S state, Renderer renderer);
 
 public class RedSystem(S)
 {
@@ -32,14 +36,17 @@ public class RedSystem(S)
     private CommandHandler!(S)[CommandType] commandRegistry;
     private IMessage[] messageQueue;
     private MessageReceiver messageReceiver;
+    private DrawFunction!(S) drawFunction;
     private bool running = true;
+    private Renderer renderer;
 
     S currentState;
 
-    this(S initialState, MessageReceiver messageReceiver)
+    this(S initialState, MessageReceiver messageReceiver, DrawFunction!(S) drawFunction)
     {
         this.currentState = initialState;
         this.messageReceiver = messageReceiver;
+        this.drawFunction = drawFunction;
     }
 
     public void sendMessage(IMessage message)
@@ -97,6 +104,14 @@ public class RedSystem(S)
 
     public void run()
     {
+        Terminal terminal = Terminal(ConsoleOutputType.cellular);
+        this.renderer = new Renderer(&terminal);
+
+        scope (exit)
+        {
+            terminal.destroy();
+        }
+
         while (this.running)
         {
             this.receiveMessage();
@@ -113,6 +128,9 @@ public class RedSystem(S)
                 }
                 this.currentState = result.state;
                 this.executeCommands(result.commands);
+                this.renderer.beginFrame();
+                this.drawFunction(this.currentState, this.renderer);
+                this.renderer.flush();
             }
         }
     }

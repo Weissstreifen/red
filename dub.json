@@ -1,9 +1,12 @@
 {
 	"description": "A TEA based TUI framework.",
-	"license": "MIT",
+	"dependencies": {
+		"arsd-official:terminal": "~>12.1.2"
+	},
 	"authors": [
 		"Weißstreifen"
 	],
 	"copyright": "Copyright © 2026, Weißstreifen",
+	"license": "MIT",
 	"name": "red"
 }
