@@ -53,10 +53,18 @@ public class Renderer
         this.backBuffer.resize(this.terminal.width, this.terminal.height);
         this.frontBuffer.clear();
         this.backBuffer.clear();
+
+        this.terminal.hideCursor();
     }
 
     public void beginFrame()
     {
+        int width = this.terminal.width;
+        int height = this.terminal.height;
+
+        this.frontBuffer.resize(width, height);
+        this.backBuffer.resize(width, height);
+
         this.backBuffer.clear();
     }
 

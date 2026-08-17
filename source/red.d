@@ -1,105 +1,86 @@
 module red;
 
+import std.typecons;
+
 import tui.renderer;
 
 import arsd.terminal;
 
-interface IMessage
-{
-    string type();
-}
-
-interface ICommand
-{
-    string type();
-}
-
-struct UpdateResult(S)
+struct UpdateResult(S, C)
 {
     S state;
-    ICommand[] commands;
+    C[] commands;
     bool exit;
 }
 
-alias MessageHandler(S) = UpdateResult!(S) delegate(S state, IMessage message);
-alias MessageSender = void delegate(IMessage message);
-alias CommandHandler(S) = void delegate(const ref S state, ICommand command, MessageSender send);
-alias MessageType = string;
-alias CommandType = string;
-alias MessageReceiver = IMessage delegate();
+alias MessageSender(M) = void delegate(M message);
+alias MessageReceiver(M) = M delegate();
+alias CommandFunction(S, M, C) = M[]delegate(S state, C command);
 alias DrawFunction(S) = void delegate(S state, Renderer renderer);
+alias UpdateFunction(S, M, C) = UpdateResult!(S, C) delegate(S state, M message);
 
-public class RedSystem(S)
+public class RedSystem(S, M, C)
 {
 
-    private MessageHandler!(S)[MessageType] messageRegistry;
-    private CommandHandler!(S)[CommandType] commandRegistry;
-    private IMessage[] messageQueue;
-    private MessageReceiver messageReceiver;
+    private M[] messageQueue;
+    private MessageReceiver!(M) messageReceiver;
     private DrawFunction!(S) drawFunction;
+    private UpdateFunction!(S, M, C) updateFunction;
+    private CommandFunction!(S, M, C) commandFunction;
     private bool running = true;
     private Renderer renderer;
 
     S currentState;
 
-    this(S initialState, MessageReceiver messageReceiver, DrawFunction!(S) drawFunction)
+    this(S initialState, MessageReceiver!(M) messageReceiver, UpdateFunction!(S,
+            M, C) updateFunction, CommandFunction!(S, M, C) commandFunction,
+            DrawFunction!(S) drawFunction)
     {
         this.currentState = initialState;
         this.messageReceiver = messageReceiver;
         this.drawFunction = drawFunction;
+        this.updateFunction = updateFunction;
+        this.commandFunction = commandFunction;
     }
 
-    public void sendMessage(IMessage message)
+    public void sendMessage(M message)
     {
         this.messageQueue ~= message;
     }
 
-    public void registerMessage(MessageType messageType, MessageHandler!(S) messageHandler)
+    private UpdateResult!(S, C) update(S state, M message)
     {
-        this.messageRegistry[messageType] = messageHandler;
-    }
-
-    public void registerCommand(CommandType commandType, CommandHandler!(S) commandHandler)
-    {
-        this.commandRegistry[commandType] = commandHandler;
-    }
-
-    private UpdateResult!(S) update(S state, IMessage message)
-    {
-        auto handler = message.type in messageRegistry;
-
-        if (handler == null)
-        {
-            throw new Exception("Message type: " ~ message.type ~ " not registered.");
-        }
-
-        return (*handler)(state, message);
+        return this.updateFunction(state, message);
     }
 
     private void receiveMessage()
     {
-        IMessage message = this.messageReceiver();
+        //TODO: Make blocking
+        Nullable!M message = this.messageReceiver();
 
-        if (message !is null)
+        if (!message.isNull)
         {
-            this.sendMessage(message);
+            this.sendMessage(message.get());
         }
     }
 
-    private void executeCommands(ICommand[] commands)
+    private void executeCommands(C[] commands)
     {
-        foreach (ICommand command; commands)
+        foreach (C command; commands)
         {
-
-            auto handler = command.type() in this.commandRegistry;
-
-            if (handler == null)
+            M[] messages = this.commandFunction(this.currentState, command);
+            foreach (M message; messages)
             {
-                throw new Exception("Command type: " ~ command.type ~ " not registered.");
+                this.sendMessage(message);
             }
-
-            (*handler)(this.currentState, command, &this.sendMessage);
         }
+    }
+
+    private void renderFrame()
+    {
+        this.renderer.beginFrame();
+        this.drawFunction(this.currentState, this.renderer);
+        this.renderer.flush();
     }
 
     public void run()
@@ -112,25 +93,26 @@ public class RedSystem(S)
             terminal.destroy();
         }
 
+        // Draw initial state
+        this.renderFrame();
+
         while (this.running)
         {
             this.receiveMessage();
 
             while (this.messageQueue.length > 0)
             {
-                IMessage message = this.messageQueue[0];
+                M message = this.messageQueue[0];
                 this.messageQueue = this.messageQueue[1 .. $];
 
-                UpdateResult!(S) result = this.update(this.currentState, message);
+                UpdateResult!(S, C) result = this.update(this.currentState, message);
                 if (result.exit)
                 {
                     this.running = false;
                 }
                 this.currentState = result.state;
                 this.executeCommands(result.commands);
-                this.renderer.beginFrame();
-                this.drawFunction(this.currentState, this.renderer);
-                this.renderer.flush();
+                this.renderFrame();
             }
         }
     }
