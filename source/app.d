@@ -62,10 +62,17 @@ void eventHandler(RedInputEvent event, MessageSender!(Message) sender)
         if (key.key == RedKeyEvent.Key.CHARACTER)
         {
             if (key.character == 'd')
+            {
                 sender(Message(Increment(1)));
-
+            }
             if (key.character == 'a')
+            {
                 sender(Message(Decrement(1)));
+            }
+            if (key.character == 'q')
+            {
+                sender(Message(Quit()));
+            }
         }
     }, (RedMouseEvent mouse) {
         // Ignore mouse events
