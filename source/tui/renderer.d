@@ -91,7 +91,7 @@ public class Renderer
                     continue;
                 }
 
-                this.terminal.moveTo(x, y);
+                this.terminal.moveTo(x, y, ForceOption.alwaysSend);
                 this.terminal.write(this.backBuffer.cells[i].c);
 
                 this.frontBuffer.cells[i] = this.backBuffer.cells[i];
@@ -99,6 +99,17 @@ public class Renderer
         }
 
         this.terminal.flush();
+    }
+
+    public void text(int x, int y, string content)
+    {
+        ulong cLength = content.length;
+
+        for (int i = 0; i < cLength; i++)
+        {
+            this.drawAt(x + i, y, content[i]);
+        }
+
     }
 
     public void box(int x, int y, int width, int height)

@@ -2,9 +2,22 @@ module red;
 
 import std.typecons;
 
+import core.thread;
+import core.sync.mutex;
+import core.sync.condition;
+
 import tui.renderer;
+import tui.terminal;
+import tui.input;
 
 import arsd.terminal;
+
+alias MessageSender(M) = void delegate(M message);
+alias SubscriptionFunction(M) = void delegate(MessageSender!(M) send);
+struct Subscription(M)
+{
+    SubscriptionFunction!(M) start;
+}
 
 struct UpdateResult(S, C)
 {
@@ -13,55 +26,52 @@ struct UpdateResult(S, C)
     bool exit;
 }
 
-alias MessageSender(M) = void delegate(M message);
-alias MessageReceiver(M) = M delegate();
-alias CommandFunction(S, M, C) = M[]delegate(S state, C command);
-alias DrawFunction(S) = void delegate(S state, Renderer renderer);
-alias UpdateFunction(S, M, C) = UpdateResult!(S, C) delegate(S state, M message);
+alias CommandFunction(S, M, C) = M[]function(S state, C command);
+alias DrawFunction(S) = void function(S state, Renderer renderer);
+alias UpdateFunction(S, M, C) = UpdateResult!(S, C) function(S state, M message);
+alias EventHandler(M) = void function(RedInputEvent event, MessageSender!(M) send);
 
 public class RedSystem(S, M, C)
 {
 
     private M[] messageQueue;
-    private MessageReceiver!(M) messageReceiver;
     private DrawFunction!(S) drawFunction;
     private UpdateFunction!(S, M, C) updateFunction;
     private CommandFunction!(S, M, C) commandFunction;
+    private Subscription!(M)[] subscriptions;
     private bool running = true;
     private Renderer renderer;
+    private EventHandler!(M) eventHandler;
+    private Mutex messageQueueMutex;
+    private Condition messageQueueCondition;
 
     S currentState;
 
-    this(S initialState, MessageReceiver!(M) messageReceiver, UpdateFunction!(S,
-            M, C) updateFunction, CommandFunction!(S, M, C) commandFunction,
-            DrawFunction!(S) drawFunction)
+    this(S initialState, UpdateFunction!(S, M, C) updateFunction,
+            CommandFunction!(S, M, C) commandFunction,
+            DrawFunction!(S) drawFunction, EventHandler!(M) eventHandler)
     {
         this.currentState = initialState;
-        this.messageReceiver = messageReceiver;
         this.drawFunction = drawFunction;
         this.updateFunction = updateFunction;
         this.commandFunction = commandFunction;
+        this.eventHandler = eventHandler;
+        this.messageQueueMutex = new Mutex();
+        this.messageQueueCondition = new Condition(this.messageQueueMutex);
     }
 
     public void sendMessage(M message)
     {
-        this.messageQueue ~= message;
+        synchronized (this.messageQueueMutex)
+        {
+            this.messageQueue ~= message;
+            this.messageQueueCondition.notify();
+        }
     }
 
     private UpdateResult!(S, C) update(S state, M message)
     {
         return this.updateFunction(state, message);
-    }
-
-    private void receiveMessage()
-    {
-        //TODO: Make blocking
-        Nullable!M message = this.messageReceiver();
-
-        if (!message.isNull)
-        {
-            this.sendMessage(message.get());
-        }
     }
 
     private void executeCommands(C[] commands)
@@ -73,6 +83,27 @@ public class RedSystem(S, M, C)
             {
                 this.sendMessage(message);
             }
+        }
+    }
+
+    private M receiveMessage()
+    {
+        synchronized (this.messageQueueMutex)
+        {
+            while (this.messageQueue.length == 0 && this.running)
+            {
+                this.messageQueueCondition.wait();
+            }
+
+            if (!this.running)
+            {
+                return M.init;
+            }
+
+            M message = this.messageQueue[0];
+            this.messageQueue = this.messageQueue[1 .. $];
+
+            return message;
         }
     }
 
@@ -93,27 +124,41 @@ public class RedSystem(S, M, C)
             terminal.destroy();
         }
 
+        auto input = RealTimeConsoleInput(&terminal, ConsoleInputFlags.allInputEvents);
+        this.subscriptions ~= terminalSubscription!(M)(&input, this.eventHandler);
+
+        foreach (subscription; subscriptions)
+        {
+            auto thread = new Thread({ subscription.start(&this.sendMessage); });
+
+            thread.start();
+        }
         // Draw initial state
         this.renderFrame();
 
         while (this.running)
         {
-            this.receiveMessage();
+            M message = this.receiveMessage();
 
-            while (this.messageQueue.length > 0)
+            if (!this.running)
             {
-                M message = this.messageQueue[0];
-                this.messageQueue = this.messageQueue[1 .. $];
-
-                UpdateResult!(S, C) result = this.update(this.currentState, message);
-                if (result.exit)
-                {
-                    this.running = false;
-                }
-                this.currentState = result.state;
-                this.executeCommands(result.commands);
-                this.renderFrame();
+                break;
             }
+
+            UpdateResult!(S, C) result = this.update(this.currentState, message);
+
+            if (result.exit)
+            {
+                this.running = false;
+                synchronized (this.messageQueueMutex)
+                {
+                    this.messageQueueCondition.notifyAll();
+                }
+            }
+
+            this.currentState = result.state;
+            this.executeCommands(result.commands);
+            this.renderFrame();
         }
     }
 }
