@@ -118,10 +118,15 @@ public class RedSystem(S, M, C)
     {
         Terminal terminal = Terminal(ConsoleOutputType.cellular);
         this.renderer = new Renderer(&terminal);
+        Thread[] subscriptionThreads = [];
 
         scope (exit)
         {
             terminal.destroy();
+            foreach (Thread t; subscriptionThreads)
+            {
+                t.join();
+            }
         }
 
         auto input = RealTimeConsoleInput(&terminal, ConsoleInputFlags.allInputEvents);

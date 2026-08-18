@@ -62,21 +62,15 @@ void eventHandler(RedInputEvent event, MessageSender!(Message) sender)
         if (key.key == RedKeyEvent.Key.CHARACTER)
         {
             if (key.character == 'd')
-            {
                 sender(Message(Increment(1)));
-            }
+
             if (key.character == 'a')
-            {
                 sender(Message(Decrement(1)));
-            }
-            if (key.character == 'q')
-            {
-                sender(Message(Quit()));
-            }
         }
     }, (RedMouseEvent mouse) {
         // Ignore mouse events
     }, (RedResizeEvent resize) {
+        sender(Message(Quit()));
         // Ignore resize events
     }, (RedPasteEvent paste) {
         // Ignore paste events
@@ -86,8 +80,19 @@ void eventHandler(RedInputEvent event, MessageSender!(Message) sender)
     });
 }
 
+import core.sys.posix.signal : signal, SIGINT, SIGTERM;
+import core.stdc.stdio : printf;
+
+extern (C) nothrow @nogc void handleSigint(int)
+{
+    printf("SIGINT!\n");
+}
+
 void main()
 {
+    signal(SIGINT, &handleSigint);
+    signal(SIGTERM, &handleSigint);
+
     RedSystem!(int, Message, Command) app = new RedSystem!(int, Message, Command)(1,
             &update, &command, &draw, &eventHandler);
     app.run();
